@@ -11,9 +11,15 @@ import numpy as np
 from . import cache
 
 
+class Vote(NamedTuple):
+    score: int
+    time: float
+
+
 class Comment(NamedTuple):
     text: str
-    votes: List[int]
+    first_seen: float
+    votes: List[Vote]
 
 
 class Post(NamedTuple):
@@ -114,9 +120,11 @@ def get_comments(
             comment_id = top_level_comment.id
             if comment_id not in comment_id_dict:
                 comment_id_dict[comment_id] = Comment(
-                    top_level_comment.body, []
+                    top_level_comment.body, current_time, []
                 )
-            comment_id_dict[comment_id].votes.append(top_level_comment.score)
+            comment_id_dict[comment_id].votes.append(
+                Vote(top_level_comment.score, current_time)
+            )
 
     return list(comment_id_dict.values())
 
