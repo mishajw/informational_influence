@@ -138,6 +138,7 @@ def get_comments(
             len(fetch_times),
         )
         # Get post's comments
+        submission.comments.replace_more()
         for top_level_comment in submission.comments:
             comment_id = top_level_comment.id
             if comment_id not in comment_id_dict:
