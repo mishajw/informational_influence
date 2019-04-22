@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import List, NamedTuple
 import argparse
 
+from praw import Reddit
+
 from . import cache
 
 
@@ -23,30 +25,44 @@ class Semantics(NamedTuple):
 
 def main() -> None:
     parser = argparse.ArgumentParser("informational_influence")
+    parser.add_argument("--client-id", type=str, required=True)
+    parser.add_argument("--client-secret", type=str, required=True)
     parser.add_argument("--output", type=str, default="output")
+
     args = parser.parse_args()
     output = Path(args.output)
     if not output.is_dir():
         output.mkdir()
 
-    posts = get_posts()
+    reddit = create_reddit(args.client_id, args.client_secret)
+    posts = get_posts.with_cache(output / "posts", reddit)
     comments = dict((p, get_comments(p)) for p in posts)
     semantics = dict(
         (p, [get_semantics(c) for c in comments[p]]) for p in posts
     )
 
+    print("posts", posts)
     print("comments", comments)
     print("semantics", semantics)
 
 
+def create_reddit(client_id: str, client_secret: str) -> Reddit:
+    return Reddit(
+        client_id=client_id,
+        client_secret=client_secret,
+        user_agent="informational_influence",
+    )
+
+
 @cache
-def get_posts() -> List[Post]:
-    return []
+def get_posts(reddit: Reddit) -> List[Post]:
+    return [Post(post.id) for post in reddit.subreddit("news").new(limit=10)]
 
 
 @cache
 def get_comments(_post: Post) -> List[Comment]:
     return []
+
 
 @cache
 def get_semantics(_comment: Comment) -> Semantics:
