@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, NamedTuple
 import argparse
 import logging
+import random
 import time
 
 from praw import Reddit
@@ -111,6 +112,9 @@ def get_posts(reddit: Reddit, subreddit: str, num_posts: int) -> List[Post]:
 def get_comments(
     reddit: Reddit, post: Post, fetch_time_sec: float, num_fetches: int
 ) -> List[Comment]:
+    # Sleep for a random amount to stagger the requests
+    time.sleep(random.uniform(0, fetch_time_sec / num_fetches))
+
     LOG.debug("get_comments for %s", post.post_id)
     submission = reddit.submission(post.post_id)
 
