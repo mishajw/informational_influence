@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, NamedTuple
 import argparse
 import logging
+import os
 import random
 import time
 
@@ -35,14 +36,15 @@ class Post(NamedTuple):
 
 
 class Semantics(NamedTuple):
-    happiness: float
-    sadness: float
+    score: float
+    magnitude: float
 
 
 def main() -> None:
     parser = argparse.ArgumentParser("informational_influence")
-    parser.add_argument("--client-id", type=str, required=True)
-    parser.add_argument("--client-secret", type=str, required=True)
+    parser.add_argument("--reddit-client-id", type=str, required=True)
+    parser.add_argument("--reddit-client-secret", type=str, required=True)
+    parser.add_argument("--google-credentials-path", type=str, required=True)
     parser.add_argument("--output", type=str, default="output")
     parser.add_argument("--subreddit", type=str, default="news")
     parser.add_argument("--num-posts", type=int, default=10)
@@ -61,7 +63,8 @@ def main() -> None:
         "Waiting for %s seconds between requests per post", fetch_wait_time_sec
     )
 
-    reddit = create_reddit(args.client_id, args.client_secret)
+    reddit = create_reddit(args.reddit_client_id, args.reddit_client_secret)
+    google_cloud = create_google_cloud(args.google_credentials_path)
     pool = multiprocess.Pool(args.num_posts)
     posts = get_posts.with_cache(
         output / "posts", reddit, args.subreddit, args.num_posts
@@ -82,7 +85,18 @@ def main() -> None:
         )
     )
     semantics = dict(
-        (p, [get_semantics(c) for c in comments[p]]) for p in posts
+        (
+            p,
+            [
+                get_semantics.with_cache(
+                    output / f"semantics-{p.post_id}-{c.comment_id}",
+                    google_cloud,
+                    c,
+                )
+                for c in comments[p]
+            ],
+        )
+        for p in posts
     )
 
     print("posts", posts)
@@ -96,6 +110,13 @@ def create_reddit(client_id: str, client_secret: str) -> Reddit:
         client_secret=client_secret,
         user_agent="informational_influence",
     )
+
+
+def create_google_cloud(credentials_path: str):
+    from google.cloud import language_v1
+
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
+    return language_v1.LanguageServiceClient()
 
 
 @cache
@@ -160,8 +181,21 @@ def get_comments(
 
 
 @cache
-def get_semantics(_comment: Comment) -> Semantics:
-    return Semantics(0, 0)
+def get_semantics(google_cloud, comment: Comment) -> Semantics:
+    from google.cloud.language_v1 import enums
+
+    LOG.info("get_semantics for %s", comment.comment_id)
+
+    response = google_cloud.analyze_sentiment(
+        {"type": enums.Document.Type.PLAIN_TEXT, "content": comment.text}
+    )
+    average_score = sum(s.sentiment.score for s in response.sentences) / len(
+        response.sentences
+    )
+    average_magnitude = sum(
+        s.sentiment.magnitude for s in response.sentences
+    ) / len(response.sentences)
+    return Semantics(average_score, average_magnitude)
 
 
 if __name__ == "__main__":
