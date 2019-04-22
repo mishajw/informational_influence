@@ -36,7 +36,15 @@ def main() -> None:
 
     reddit = create_reddit(args.client_id, args.client_secret)
     posts = get_posts.with_cache(output / "posts", reddit)
-    comments = dict((p, get_comments(p)) for p in posts)
+    comments = dict(
+        (
+            p,
+            get_comments.with_cache(
+                output / f"comments-{p.post_id}", reddit, p
+            ),
+        )
+        for p in posts
+    )
     semantics = dict(
         (p, [get_semantics(c) for c in comments[p]]) for p in posts
     )
@@ -60,8 +68,12 @@ def get_posts(reddit: Reddit) -> List[Post]:
 
 
 @cache
-def get_comments(_post: Post) -> List[Comment]:
-    return []
+def get_comments(reddit: Reddit, post: Post) -> List[Comment]:
+    submission = reddit.submission(post.post_id)
+    return [
+        Comment(top_level_comment.body, [top_level_comment.score])
+        for top_level_comment in submission.comments
+    ]
 
 
 @cache
