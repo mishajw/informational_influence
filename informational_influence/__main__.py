@@ -28,14 +28,30 @@ def main() -> None:
     parser.add_argument("--client-id", type=str, required=True)
     parser.add_argument("--client-secret", type=str, required=True)
     parser.add_argument("--output", type=str, default="output")
+    parser.add_argument("--subreddit", type=str, default="news")
+    parser.add_argument("--num-posts", type=int, default=10)
+    parser.add_argument("--fetch-time-sec", type=float, default=10)
+    parser.add_argument("--num-fetches", type=int, default=10)
 
     args = parser.parse_args()
     output = Path(args.output)
     if not output.is_dir():
         output.mkdir()
 
+    num_requests_estimate = 1 + args.num_posts * args.num_fetches
+    num_requests_per_minute_estimate = num_requests_estimate / (
+        args.fetch_time_sec / 60
+    )
+    print(f"Estimated num Reddit requests: {num_requests_estimate}")
+    print(
+        f"Estimated num Reddit requests per minute: "
+        f"{num_requests_per_minute_estimate}"
+    )
+
     reddit = create_reddit(args.client_id, args.client_secret)
-    posts = get_posts.with_cache(output / "posts", reddit)
+    posts = get_posts.with_cache(
+        output / "posts", reddit, args.subreddit, args.num_posts
+    )
     comments = dict(
         (
             p,
@@ -63,8 +79,11 @@ def create_reddit(client_id: str, client_secret: str) -> Reddit:
 
 
 @cache
-def get_posts(reddit: Reddit) -> List[Post]:
-    return [Post(post.id) for post in reddit.subreddit("news").new(limit=10)]
+def get_posts(reddit: Reddit, subreddit: str, num_posts: int) -> List[Post]:
+    return [
+        Post(post.id)
+        for post in reddit.subreddit(subreddit).new(limit=num_posts)
+    ]
 
 
 @cache
