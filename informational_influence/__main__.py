@@ -15,6 +15,7 @@ from . import cache
 
 
 LOG = logging.getLogger(__name__)
+REDDIT_REQUESTS_PER_SECOND = 1
 
 
 class Vote(NamedTuple):
@@ -44,22 +45,19 @@ def main() -> None:
     parser.add_argument("--output", type=str, default="output")
     parser.add_argument("--subreddit", type=str, default="news")
     parser.add_argument("--num-posts", type=int, default=10)
-    parser.add_argument("--fetch-time-sec", type=float, default=10)
-    parser.add_argument("--num-fetches", type=int, default=10)
+    parser.add_argument("--fetch-time-sec", type=float, default=60)
 
     args = parser.parse_args()
     output = Path(args.output)
     if not output.is_dir():
         output.mkdir()
 
-    num_requests_estimate = 1 + args.num_posts * args.num_fetches
-    num_requests_per_minute_estimate = num_requests_estimate / (
-        args.fetch_time_sec / 60
+    reddit_requests_per_second_per_post = (
+        REDDIT_REQUESTS_PER_SECOND / args.num_posts
     )
-    LOG.info("Estimated num Reddit requests: %d", num_requests_estimate)
+    fetch_wait_time_sec = 1 / reddit_requests_per_second_per_post
     LOG.info(
-        "Estimated num Reddit requests per minute: %f",
-        num_requests_per_minute_estimate,
+        "Waiting for %s seconds between requests per post", fetch_wait_time_sec
     )
 
     reddit = create_reddit(args.client_id, args.client_secret)
@@ -76,7 +74,7 @@ def main() -> None:
                     reddit,
                     p,
                     args.fetch_time_sec,
-                    args.num_fetches,
+                    fetch_wait_time_sec,
                 ),
             ),
             posts,
@@ -110,17 +108,20 @@ def get_posts(reddit: Reddit, subreddit: str, num_posts: int) -> List[Post]:
 
 @cache
 def get_comments(
-    reddit: Reddit, post: Post, fetch_time_sec: float, num_fetches: int
+    reddit: Reddit,
+    post: Post,
+    fetch_time_sec: float,
+    fetch_wait_time_sec: float,
 ) -> List[Comment]:
     # Sleep for a random amount to stagger the requests
-    time.sleep(random.uniform(0, fetch_time_sec / num_fetches))
+    time.sleep(random.uniform(0, fetch_wait_time_sec))
 
     LOG.debug("get_comments for %s", post.post_id)
     submission = reddit.submission(post.post_id)
 
     start_time = time.time()
     fetch_times = np.arange(
-        start_time, start_time + fetch_time_sec, fetch_time_sec / num_fetches
+        start_time, start_time + fetch_time_sec, fetch_wait_time_sec
     )
 
     comment_id_dict = dict()
