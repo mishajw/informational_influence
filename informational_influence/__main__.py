@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import List, NamedTuple
 import argparse
+import logging
 import time
 
 from praw import Reddit
@@ -10,6 +11,9 @@ import multiprocess
 import numpy as np
 
 from . import cache
+
+
+LOG = logging.getLogger(__name__)
 
 
 class Vote(NamedTuple):
@@ -51,10 +55,10 @@ def main() -> None:
     num_requests_per_minute_estimate = num_requests_estimate / (
         args.fetch_time_sec / 60
     )
-    print(f"Estimated num Reddit requests: {num_requests_estimate}")
-    print(
-        f"Estimated num Reddit requests per minute: "
-        f"{num_requests_per_minute_estimate}"
+    LOG.info("Estimated num Reddit requests: %d", num_requests_estimate)
+    LOG.info(
+        "Estimated num Reddit requests per minute: %f",
+        num_requests_per_minute_estimate,
     )
 
     reddit = create_reddit(args.client_id, args.client_secret)
@@ -96,6 +100,7 @@ def create_reddit(client_id: str, client_secret: str) -> Reddit:
 
 @cache
 def get_posts(reddit: Reddit, subreddit: str, num_posts: int) -> List[Post]:
+    LOG.debug("get_posts for r/%s", subreddit)
     return [
         Post(post.id)
         for post in reddit.subreddit(subreddit).new(limit=num_posts)
@@ -106,6 +111,7 @@ def get_posts(reddit: Reddit, subreddit: str, num_posts: int) -> List[Post]:
 def get_comments(
     reddit: Reddit, post: Post, fetch_time_sec: float, num_fetches: int
 ) -> List[Comment]:
+    LOG.debug("get_comments for %s", post.post_id)
     submission = reddit.submission(post.post_id)
 
     start_time = time.time()
@@ -114,11 +120,18 @@ def get_comments(
     )
 
     comment_id_dict = dict()
-    for fetch_time in fetch_times:
+    for i, fetch_time in enumerate(fetch_times):
         # Sleep until fetch_time
         current_time = time.time()
         if current_time < fetch_time:
             time.sleep(fetch_time - current_time)
+        LOG.debug(
+            "get_comments for %s at time %f (%d/%d)",
+            post.post_id,
+            fetch_time,
+            i + 1,
+            len(fetch_times),
+        )
         # Get post's comments
         for top_level_comment in submission.comments:
             comment_id = top_level_comment.id
@@ -130,6 +143,12 @@ def get_comments(
                 Vote(top_level_comment.score, current_time)
             )
 
+    LOG.debug(
+        "get_comments for %s finished with %d comments",
+        post.post_id,
+        len(comment_id_dict),
+    )
+
     return list(comment_id_dict.values())
 
 
@@ -139,4 +158,8 @@ def get_semantics(_comment: Comment) -> Semantics:
 
 
 if __name__ == "__main__":
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger("prawcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
     main()
