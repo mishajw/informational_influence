@@ -6,6 +6,7 @@ import argparse
 import time
 
 from praw import Reddit
+import multiprocess
 import numpy as np
 
 from . import cache
@@ -57,21 +58,24 @@ def main() -> None:
     )
 
     reddit = create_reddit(args.client_id, args.client_secret)
+    pool = multiprocess.Pool(args.num_posts)
     posts = get_posts.with_cache(
         output / "posts", reddit, args.subreddit, args.num_posts
     )
     comments = dict(
-        (
-            p,
-            get_comments.with_cache(
-                output / f"comments-{p.post_id}",
-                reddit,
+        pool.map(
+            lambda p: (
                 p,
-                args.fetch_time_sec,
-                args.num_fetches,
+                get_comments.with_cache(
+                    output / f"comments-{p.post_id}",
+                    reddit,
+                    p,
+                    args.fetch_time_sec,
+                    args.num_fetches,
+                ),
             ),
+            posts,
         )
-        for p in posts
     )
     semantics = dict(
         (p, [get_semantics(c) for c in comments[p]]) for p in posts
