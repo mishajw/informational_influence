@@ -24,6 +24,7 @@ class Vote(NamedTuple):
 
 
 class Comment(NamedTuple):
+    comment_id: str
     text: str
     first_seen: float
     votes: List[Vote]
@@ -143,7 +144,7 @@ def get_comments(
             comment_id = top_level_comment.id
             if comment_id not in comment_id_dict:
                 comment_id_dict[comment_id] = Comment(
-                    top_level_comment.body, current_time, []
+                    comment_id, top_level_comment.body, current_time, []
                 )
             comment_id_dict[comment_id].votes.append(
                 Vote(top_level_comment.score, current_time)
