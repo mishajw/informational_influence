@@ -3,8 +3,10 @@
 from pathlib import Path
 from typing import List, NamedTuple
 import argparse
+import time
 
 from praw import Reddit
+import numpy as np
 
 from . import cache
 
@@ -56,7 +58,11 @@ def main() -> None:
         (
             p,
             get_comments.with_cache(
-                output / f"comments-{p.post_id}", reddit, p
+                output / f"comments-{p.post_id}",
+                reddit,
+                p,
+                args.fetch_time_sec,
+                args.num_fetches,
             ),
         )
         for p in posts
@@ -87,12 +93,32 @@ def get_posts(reddit: Reddit, subreddit: str, num_posts: int) -> List[Post]:
 
 
 @cache
-def get_comments(reddit: Reddit, post: Post) -> List[Comment]:
+def get_comments(
+    reddit: Reddit, post: Post, fetch_time_sec: float, num_fetches: int
+) -> List[Comment]:
     submission = reddit.submission(post.post_id)
-    return [
-        Comment(top_level_comment.body, [top_level_comment.score])
-        for top_level_comment in submission.comments
-    ]
+
+    start_time = time.time()
+    fetch_times = np.arange(
+        start_time, start_time + fetch_time_sec, fetch_time_sec / num_fetches
+    )
+
+    comment_id_dict = dict()
+    for fetch_time in fetch_times:
+        # Sleep until fetch_time
+        current_time = time.time()
+        if current_time < fetch_time:
+            time.sleep(fetch_time - current_time)
+        # Get post's comments
+        for top_level_comment in submission.comments:
+            comment_id = top_level_comment.id
+            if comment_id not in comment_id_dict:
+                comment_id_dict[comment_id] = Comment(
+                    top_level_comment.body, []
+                )
+            comment_id_dict[comment_id].votes.append(top_level_comment.score)
+
+    return list(comment_id_dict.values())
 
 
 @cache
