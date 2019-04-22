@@ -117,7 +117,6 @@ def get_comments(
     time.sleep(random.uniform(0, fetch_wait_time_sec))
 
     LOG.debug("get_comments for %s", post.post_id)
-    submission = reddit.submission(post.post_id)
 
     start_time = time.time()
     fetch_times = np.arange(
@@ -126,6 +125,7 @@ def get_comments(
 
     comment_id_dict = dict()
     for i, fetch_time in enumerate(fetch_times):
+        submission = reddit.submission(post.post_id)
         # Sleep until fetch_time
         current_time = time.time()
         if current_time < fetch_time:
